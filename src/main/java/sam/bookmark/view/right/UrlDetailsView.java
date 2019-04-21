@@ -40,6 +40,8 @@ class UrlDetailsView extends GridPane  {
 		setHgap(5);
 		setVgap(5);
 		
+		description.setEditable(false);
+		
 		int row = 0;
 		addRow(row++, new Text("id: "), id);
 		addRow(row++, new Text("Site Name: "), site_name);

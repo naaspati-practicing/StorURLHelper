@@ -1,7 +1,5 @@
 package sam.bookmark.app;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.Arrays;
@@ -15,12 +13,17 @@ import javafx.application.Application;
 import javafx.application.HostServices;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.SplitPane;
-import javafx.scene.control.TextArea;
 import javafx.scene.control.TreeItem;
+import javafx.scene.effect.DropShadow;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import sam.bookmark.model.Category;
@@ -28,11 +31,19 @@ import sam.bookmark.model.IUrl;
 import sam.bookmark.model.UrlMeta;
 import sam.bookmark.model.UrlPartial;
 import sam.bookmark.view.right.RightPane;
+import sam.bookmark.view.right.UrlDetailsEditorView;
 import sam.di.FeatherInjector;
 import sam.di.Injector;
 import sam.fx.alert.FxAlert;
+import sam.fx.dialog.DialogViewer;
+import sam.fx.dialog.StackPaneDialogViewer;
+import sam.fx.helpers.FxButton;
+import sam.fx.helpers.FxCell;
+import sam.fx.helpers.FxCss;
 import sam.fx.helpers.FxStageState;
+import sam.fx.helpers.FxUtils;
 import sam.myutils.MyUtilsPath;
+import sam.reference.WeakPool;
 import sam.sql.JDBCHelper;
 import sam.sql.sqlite.SQLiteDB;
 
@@ -51,7 +62,6 @@ public class App extends Application {
 
 	private BookmarkTree bookmarks;
 	private SplitPane splitPane;
-	private StackPane root;
 	private Stage stage;
 
 	private FeatherInjector feather;
@@ -59,6 +69,8 @@ public class App extends Application {
 	private SQLiteDB db;
 	private RightPane right;
 	private FxStageState stageState;
+	private final StackPane root = new StackPane();
+	private final StackPaneDialogViewer dialogViewer = new StackPaneDialogViewer(root);
 
 	@Override
 	public void start(Stage stage) throws Exception {
@@ -69,15 +81,16 @@ public class App extends Application {
 			Injector.init(feather);
 			this.bookmarks = feather.instance(BookmarkTree.class);
 			this.right = feather.instance(RightPane.class);
-			
-			Text bottom = new Text();
+
+			Text bottomT = new Text();
+			VBox bottom = new VBox(2, bottomT, FxButton.button("dialog", e -> dialogViewer.viewDialog("title", new UrlDetailsEditorView(), null)));
 			BorderPane.setMargin(bottom, new Insets(5));
 			splitPane = new SplitPane(new BorderPane(bookmarks, null, null, bottom, null), right);
 			Platform.runLater(() -> splitPane.setDividerPositions(0.2, 0.8));
-			root = new StackPane(splitPane);
+			root.getChildren().add(splitPane);
 
 			bookmarks.setRoot(load());
-			bottom.setText(
+			bottomT.setText(
 					"count: "+Arrays.stream(old_data).filter(d -> d != null).count()+
 					"\nmax_category_id: "+next_category_id+
 					"\nmax_url_id: "+next_url_id
@@ -94,35 +107,25 @@ public class App extends Application {
 	}
 
 	private void error(Throwable e) {
-		StringWriter sw = new StringWriter();
-		PrintWriter pw = new PrintWriter(sw);
-		e.printStackTrace(pw);
-		String s = sw.toString();
-		
-		if(stage.getScene() == null)
-			stage.setScene(new Scene(new TextArea(s)));
-		else
-			stage.getScene().setRoot(new TextArea(s));
-
+		FxUtils.setErrorTa(stage, "failed to start app", null, e);
 		stage.show();
-		stage.sizeToScene();
-
-		System.out.println(s);
+		stage.setWidth(400);
+		stage.setHeight(500);
 	}
-	
+
 	private static final StringBuilder select_urls = JDBCHelper.selectSQL(UrlMeta.URL_TABLE_NAME, UrlPartial.columns()).append(" WHERE parent = ");
 	private static final int select_urls_n = select_urls.length(); 
-	
+
 	private class Cat extends Category {
 		public Cat(int id, String name) {
 			super(id, name);
 		}
-		
+
 		@Override
 		public List<IUrl> getUrls() {
 			select_urls.setLength(select_urls_n);
 			select_urls.append(id).append(';');
-			
+
 			try {
 				return db().collectToList(select_urls.toString(), UrlPartial::new);
 			} catch (SQLException e) {
@@ -130,13 +133,13 @@ public class App extends Application {
 				return Collections.emptyList();
 			}
 		}
-		
+
 		@Override
 		public String toString() {
 			return id+"@[\""+getValue()+"\"]";
 		}
 	}
-	
+
 	private TreeItem<String> load() throws SQLException {
 		Loader d = loader();
 
@@ -155,7 +158,7 @@ public class App extends Application {
 			protected Category newCategory(int id, String name) {
 				return new Cat(id, name);
 			}
-			
+
 			@Override
 			protected Path db_path() {
 				return db_path;
@@ -170,7 +173,7 @@ public class App extends Application {
 			}
 		};
 	}
-	
+
 	@Provides
 	public SQLiteDB db() {
 		if(db == null) {
@@ -202,7 +205,7 @@ public class App extends Application {
 		} finally {
 			db = null;
 		}
-		
+
 		try {
 			if(stageState.save(stage))
 				System.out.println("saved: "+stageState.path);
@@ -210,10 +213,14 @@ public class App extends Application {
 			e.printStackTrace();
 		}
 	}
-	
-	
+
+
 	@Provides
 	public HostServices hostServices() {
 		return getHostServices();
+	}
+	@Provides
+	public DialogViewer dialogViewer() {
+		return dialogViewer;
 	}
 }
