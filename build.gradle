@@ -1,0 +1,94 @@
+
+apply plugin: 'java'
+apply plugin: 'application'
+
+repositories {
+    jcenter()
+}
+
+version = '.001'
+sourceCompatibility = JavaVersion.VERSION_1_8 
+targetCompatibility = JavaVersion.VERSION_1_8
+ 
+mainClassName = 'Main'
+ext.appdir = file(System.env.SAM_PROGRAMS+'\\bookmark\\bin')
+
+ext.JUNIT_VERSION = '5.3.2'
+ext.TRUTH_VERSION = '0.42'
+
+
+dependencies {
+  implementation 'org.jsoup:jsoup:+'
+  implementation 'org.xerial:sqlite-jdbc:+'
+  implementation 'org.codejargon.feather:feather:1.0'
+  implementation files('myutils.jar')
+  
+   testImplementation 'com.thedeanda:lorem:2.1'
+  testImplementation 'org.junit.jupiter:junit-jupiter-api:'+JUNIT_VERSION
+  
+  // testImplementation 'org.junit.jupiter:junit-jupiter-params:'+JUNIT_VERSION
+   testRuntime 'org.junit.jupiter:junit-jupiter-engine:'+JUNIT_VERSION
+}
+
+test {
+  useJUnitPlatform()
+  systemProperty 'java.util.logging.config.file','test-logging.properties'
+}
+
+task deleteJars {
+  doLast {
+     file(appdir).listFiles().each({
+       if(it.name.endsWith('.jar'))
+         it.delete();
+     });
+  }
+}
+
+run {
+  environment['SELF_DIR'] = appdir.parent
+  environment['db_path'] = /C:\Users\Sameer\IDE\StorURL3\profile\storurl.sudb/
+  
+}
+
+
+task install(type: Copy, dependsOn:[installDist, deleteJars]) {
+  def libdir = file(new File(installDist.destinationDir, 'lib')) 
+  from libdir
+  into appdir
+  
+  doLast {
+     new File(appdir, 'run.cmd').text = """
+  @echo off
+  setlocal
+  
+  rem BUILD_TIME ${java.time.LocalDateTime.now()}
+  
+  ${versionText()}
+  
+  java %JVM_OPTS% %JAVA_OPTS% -cp \"%~dp0;%~dp0${String.join(';%~dp0', libdir.list())}\" ${mainClassName} %*
+  
+  """.stripIndent()
+  } 
+}
+
+def versionText() {
+  if(!version && version == 'unspecified') return '';
+  String s = "echo version: %APP_VERSION% (${java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM))}^)"
+  return """
+  SET APP_VERSION=${version}
+  if [%1]==[-v] (
+    ${s}
+    goto:eof
+  )
+  if [%1]==[--version] (
+    ${s}
+    goto:eof
+  )
+  """;    
+}
+
+jar {
+  exclude '*.fxgraph'
+}
+
+defaultTasks 'install'
